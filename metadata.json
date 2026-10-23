@@ -1,0 +1,6 @@
+{
+  "name": "Smart Vector Engine - Digital Ink Studio",
+  "description": "Nền tảng ghi chú kỹ thuật số và xử lý đồ họa vector thông minh với bộ công cụ toán học tương tác vật lý, ổn định nét vẽ, AI cải thiện chữ viết và trợ lý chuyên gia tư vấn.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
