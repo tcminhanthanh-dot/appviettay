@@ -28,6 +28,7 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
   setPlots,
   laserPoints,
 }) => {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [activeResizeId, setActiveResizeId] = useState<string | null>(null);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -108,10 +109,22 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
             img.id === activeResizeId
               ? {
                   ...img,
-                  width: Math.max(80, img.width + dx),
+                  width: Math.max(100, img.width + dx),
                   height: Math.max(80, img.height + dy),
                 }
               : img
+          )
+        );
+        // Resize plot
+        setPlots(prev =>
+          prev.map(plot =>
+            plot.id === activeResizeId
+              ? {
+                  ...plot,
+                  width: Math.max(160, plot.width + dx),
+                  height: Math.max(120, plot.height + dy),
+                }
+              : plot
           )
         );
         dragStartRef.current = { x: e.clientX, y: e.clientY };
@@ -129,10 +142,38 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [activeDragId, activeResizeId]);
+  }, [activeDragId, activeResizeId, setImages, setTexts, setPlots]);
+
+  // Keyboard shortcut to delete selected item (Delete or Backspace)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        setPlots(prev => prev.filter(p => p.id !== selectedId));
+        setImages(prev => prev.filter(img => img.id !== selectedId));
+        setTexts(prev => prev.filter(t => t.id !== selectedId));
+        setSelectedId(null);
+      } else if (e.key === 'Escape') {
+        setSelectedId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, setPlots, setImages, setTexts]);
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-15 overflow-visible">
+    <div
+      className="absolute inset-0 pointer-events-none z-15 overflow-visible"
+      onPointerDown={() => setSelectedId(null)}
+    >
       {/* 1. Laser Pointer Trail */}
       {laserPoints.length > 1 && (
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
@@ -152,92 +193,146 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
       )}
 
       {/* 2. Canvas Images */}
-      {images.map(img => (
-        <div
-          key={img.id}
-          className="absolute pointer-events-auto group border border-transparent hover:border-indigo-400 rounded-xl transition-shadow hover:shadow-xl bg-white/20 select-none"
-          style={{
-            left: `${img.x}px`,
-            top: `${img.y}px`,
-            width: `${img.width}px`,
-            height: `${img.height}px`,
-          }}
-        >
-          <img
-            src={img.src}
-            alt="Đề bài / Ảnh minh họa"
-            className="w-full h-full object-contain rounded-lg pointer-events-none"
-          />
+      {images.map(img => {
+        const isSelected = selectedId === img.id;
+        return (
+          <div
+            key={img.id}
+            onClick={e => {
+              e.stopPropagation();
+              setSelectedId(img.id);
+            }}
+            className={`absolute pointer-events-auto group rounded-xl transition-shadow select-none ${
+              isSelected
+                ? 'ring-2 ring-indigo-500 shadow-2xl bg-white/10'
+                : 'border border-transparent hover:border-indigo-400 bg-white/20'
+            }`}
+            style={{
+              left: `${img.x}px`,
+              top: `${img.y}px`,
+              width: `${img.width}px`,
+              height: `${img.height}px`,
+            }}
+          >
+            <img
+              src={img.src}
+              alt="Đề bài / Ảnh minh họa"
+              className="w-full h-full object-contain rounded-lg pointer-events-none"
+            />
 
-          {/* Controls Bar on Hover */}
-          <div className="absolute -top-7 left-0 right-0 flex items-center justify-between px-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded-lg text-white text-[10px] py-0.5">
-            <span
+            {/* Quick Delete Badge (Always visible at top-right corner) */}
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                setImages(prev => prev.filter(i => i.id !== img.id));
+                if (selectedId === img.id) setSelectedId(null);
+              }}
+              className="absolute -top-3.5 -right-3.5 z-30 w-7 h-7 bg-rose-600 hover:bg-rose-700 active:scale-90 text-white rounded-full shadow-xl border-2 border-white flex items-center justify-center cursor-pointer transition-transform"
+              title="Xóa hình ảnh này"
+            >
+              <X className="w-4 h-4 stroke-[3]" />
+            </button>
+
+            {/* Controls Bar on Hover / Selection */}
+            <div
+              className={`absolute -top-8 left-0 right-8 flex items-center justify-between px-2 py-0.5 bg-slate-900/90 backdrop-blur-md rounded-lg text-white text-[10px] transition-opacity z-20 ${
+                isSelected
+                  ? 'opacity-100'
+                  : 'opacity-0 group-hover:opacity-100'
+              }`}
+            >
+              <span
+                onPointerDown={e => {
+                  e.stopPropagation();
+                  dragStartRef.current = { x: e.clientX, y: e.clientY };
+                  setActiveDragId(img.id);
+                  setSelectedId(img.id);
+                }}
+                className="flex items-center gap-1 cursor-grab active:cursor-grabbing font-semibold text-indigo-200"
+              >
+                <Move className="w-3 h-3" />
+                <span>Kéo ảnh</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setImages(prev => prev.filter(i => i.id !== img.id));
+                  if (selectedId === img.id) setSelectedId(null);
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded"
+                title="Xóa ảnh này"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Xóa</span>
+              </button>
+            </div>
+
+            {/* Resize Corner Handle */}
+            <div
               onPointerDown={e => {
                 e.stopPropagation();
                 dragStartRef.current = { x: e.clientX, y: e.clientY };
-                setActiveDragId(img.id);
+                setActiveResizeId(img.id);
+                setSelectedId(img.id);
               }}
-              className="flex items-center gap-1 cursor-grab active:cursor-grabbing font-semibold"
+              className={`absolute -bottom-3 -right-3 w-6 h-6 bg-indigo-600 hover:bg-indigo-700 border-2 border-white rounded-full cursor-se-resize flex items-center justify-center shadow-lg transition-all z-20 ${
+                isSelected ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'
+              }`}
+              title="Kéo góc để thay đổi kích thước ảnh"
             >
-              <Move className="w-3 h-3" />
-              <span>Di chuyển</span>
-            </span>
-
-            <button
-              onClick={() => setImages(prev => prev.filter(i => i.id !== img.id))}
-              className="p-0.5 text-rose-400 hover:text-rose-200"
-              title="Xóa ảnh này"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+              <Maximize2 className="w-3 h-3 text-white" />
+            </div>
           </div>
-
-          {/* Resize Corner Handle */}
-          <div
-            onPointerDown={e => {
-              e.stopPropagation();
-              dragStartRef.current = { x: e.clientX, y: e.clientY };
-              setActiveResizeId(img.id);
-            }}
-            className="absolute -bottom-2 -right-2 w-5 h-5 bg-indigo-600 border-2 border-white rounded-full cursor-se-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-            title="Kéo để thay đổi kích thước ảnh"
-          >
-            <Maximize2 className="w-2.5 h-2.5 text-white" />
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* 3. Canvas Text Items */}
       {texts.map(t => {
         const isEditing = editingTextId === t.id;
+        const isSelected = selectedId === t.id;
         return (
           <div
             key={t.id}
-            className="absolute pointer-events-auto group border border-transparent hover:border-indigo-400 rounded-lg p-1 transition-all bg-white/70 backdrop-blur-xs select-none"
+            onClick={e => {
+              e.stopPropagation();
+              setSelectedId(t.id);
+            }}
+            className={`absolute pointer-events-auto group rounded-xl p-2 transition-all bg-white/90 backdrop-blur-md select-none shadow-md ${
+              isSelected
+                ? 'ring-2 ring-indigo-500 shadow-2xl'
+                : 'border border-transparent hover:border-indigo-400'
+            }`}
             style={{
               left: `${t.x}px`,
               top: `${t.y}px`,
-              maxWidth: '450px',
+              maxWidth: '500px',
             }}
           >
+            {/* Quick Delete Badge */}
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                setTexts(prev => prev.filter(item => item.id !== t.id));
+                if (selectedId === t.id) setSelectedId(null);
+              }}
+              className="absolute -top-3 -right-3 z-30 w-6 h-6 bg-rose-600 hover:bg-rose-700 active:scale-90 text-white rounded-full shadow-lg border-2 border-white flex items-center justify-center cursor-pointer transition-transform"
+              title="Xóa hộp văn bản"
+            >
+              <X className="w-3.5 h-3.5 stroke-[3]" />
+            </button>
+
             {isEditing ? (
-              <div className="flex items-center gap-1">
-                <input
-                  type="text"
+              <div className="flex items-center gap-1.5">
+                <textarea
                   value={textValue}
                   onChange={e => setTextValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      setTexts(prev =>
-                        prev.map(item =>
-                          item.id === t.id ? { ...item, text: textValue } : item
-                        )
-                      );
-                      setEditingTextId(null);
-                    }
-                  }}
                   autoFocus
-                  className="px-2 py-1 text-xs border border-indigo-400 rounded bg-white"
+                  rows={3}
+                  className="px-2 py-1 text-xs border border-indigo-400 rounded-lg bg-white w-64 focus:outline-none"
                 />
                 <button
                   onClick={() => {
@@ -248,9 +343,10 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
                     );
                     setEditingTextId(null);
                   }}
-                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                  className="p-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg shadow-sm"
+                  title="Xong"
                 >
-                  <Check className="w-3 h-3" />
+                  <Check className="w-4 h-4" />
                 </button>
               </div>
             ) : (
@@ -259,35 +355,47 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
                   setEditingTextId(t.id);
                   setTextValue(t.text);
                 }}
-                className="whitespace-pre-wrap font-sans font-medium"
+                className="whitespace-pre-wrap font-sans font-medium cursor-text pr-3"
                 style={{
                   fontSize: `${t.fontSize || 14}px`,
                   color: t.color || '#1e293b',
                 }}
+                title="Nhấp đúp chuột để chỉnh sửa văn bản"
               >
                 {t.text}
               </div>
             )}
 
             {/* Hover actions */}
-            <div className="absolute -top-6 left-0 right-0 flex items-center justify-between px-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded text-white text-[9px] py-0.5">
+            <div
+              className={`absolute -top-7 left-0 right-6 flex items-center justify-between px-2 py-0.5 bg-slate-900/90 rounded-lg text-white text-[10px] z-20 ${
+                isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+            >
               <span
                 onPointerDown={e => {
                   e.stopPropagation();
                   dragStartRef.current = { x: e.clientX, y: e.clientY };
                   setActiveDragId(t.id);
+                  setSelectedId(t.id);
                 }}
-                className="cursor-grab active:cursor-grabbing flex items-center gap-1"
+                className="cursor-grab active:cursor-grabbing flex items-center gap-1 text-indigo-200"
               >
-                <Move className="w-2.5 h-2.5" />
-                <span>Kéo</span>
+                <Move className="w-3 h-3" />
+                <span>Di chuyển</span>
               </span>
 
               <button
-                onClick={() => setTexts(prev => prev.filter(item => item.id !== t.id))}
-                className="text-rose-400 hover:text-rose-200"
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setTexts(prev => prev.filter(item => item.id !== t.id));
+                  if (selectedId === t.id) setSelectedId(null);
+                }}
+                className="text-rose-400 hover:text-rose-200 font-bold flex items-center gap-0.5"
               >
-                <Trash2 className="w-2.5 h-2.5" />
+                <Trash2 className="w-3 h-3" />
+                <span>Xóa</span>
               </button>
             </div>
           </div>
@@ -295,50 +403,107 @@ export const BoardElementsOverlay: React.FC<BoardElementsOverlayProps> = ({
       })}
 
       {/* 4. Math Plots & 3D Shapes */}
-      {plots.map(p => (
-        <div
-          key={p.id}
-          className="absolute pointer-events-auto group border border-transparent hover:border-indigo-400 rounded-2xl shadow-md transition-all select-none"
-          style={{
-            left: `${p.x}px`,
-            top: `${p.y}px`,
-            width: `${p.width}px`,
-            height: `${p.height}px`,
-          }}
-        >
-          <canvas
-            ref={el => {
-              if (el) plotCanvasesRef.current.set(p.id, el);
-              else plotCanvasesRef.current.delete(p.id);
+      {plots.map(p => {
+        const isSelected = selectedId === p.id;
+        return (
+          <div
+            key={p.id}
+            onClick={e => {
+              e.stopPropagation();
+              setSelectedId(p.id);
             }}
-            width={p.width}
-            height={p.height}
-            className="w-full h-full rounded-2xl"
-          />
+            className={`absolute pointer-events-auto group rounded-2xl shadow-xl transition-all select-none bg-white/95 ${
+              isSelected
+                ? 'ring-3 ring-indigo-500 shadow-2xl'
+                : 'border-2 border-slate-300 hover:border-indigo-400'
+            }`}
+            style={{
+              left: `${p.x}px`,
+              top: `${p.y}px`,
+              width: `${p.width}px`,
+              height: `${p.height}px`,
+            }}
+          >
+            {/* Quick Delete Badge Button (LỚN, ĐỎ, NỔI BẬT Ở GÓC TRÊN BÊN PHẢI) */}
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                setPlots(prev => prev.filter(item => item.id !== p.id));
+                if (selectedId === p.id) setSelectedId(null);
+              }}
+              className="absolute -top-3.5 -right-3.5 z-40 w-8 h-8 bg-rose-600 hover:bg-rose-700 active:scale-90 text-white rounded-full shadow-2xl border-2 border-white flex items-center justify-center cursor-pointer transition-all hover:scale-110"
+              title="Xóa đồ thị này"
+            >
+              <X className="w-4 h-4 stroke-[3]" />
+            </button>
 
-          {/* Action bar */}
-          <div className="absolute -top-7 left-0 right-0 flex items-center justify-between px-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/85 rounded-lg text-white text-[10px] py-1">
-            <span
+            {/* Main Canvas rendering Oxy or 3D Shape */}
+            <canvas
+              ref={el => {
+                if (el) plotCanvasesRef.current.set(p.id, el);
+                else plotCanvasesRef.current.delete(p.id);
+              }}
+              width={p.width}
+              height={p.height}
+              className="w-full h-full rounded-2xl block"
+            />
+
+            {/* Top Action & Delete Bar */}
+            <div
+              className={`absolute -top-9 left-0 right-8 flex items-center justify-between px-2.5 py-1 bg-slate-900/90 backdrop-blur-md rounded-xl text-white text-[11px] shadow-xl z-30 transition-opacity ${
+                isSelected ? 'opacity-100 ring-1 ring-white/20' : 'opacity-0 group-hover:opacity-100'
+              }`}
+            >
+              <span
+                onPointerDown={e => {
+                  e.stopPropagation();
+                  dragStartRef.current = { x: e.clientX, y: e.clientY };
+                  setActiveDragId(p.id);
+                  setSelectedId(p.id);
+                }}
+                className="flex items-center gap-1.5 cursor-grab active:cursor-grabbing font-bold text-sky-300 select-none truncate max-w-[200px]"
+                title="Kéo giữ để di chuyển đồ thị"
+              >
+                <Move className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">
+                  {p.title || (p.type === 'function' ? `y = ${p.expression}` : 'Khối 3D')}
+                </span>
+              </span>
+
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setPlots(prev => prev.filter(item => item.id !== p.id));
+                  if (selectedId === p.id) setSelectedId(null);
+                }}
+                className="flex items-center gap-1 px-2.5 py-0.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold rounded-lg transition-all shadow-sm shrink-0"
+                title="Xóa đồ thị khỏi bảng"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa đồ thị</span>
+              </button>
+            </div>
+
+            {/* Resize Corner Handle (Góc dưới bên phải) */}
+            <div
               onPointerDown={e => {
                 e.stopPropagation();
                 dragStartRef.current = { x: e.clientX, y: e.clientY };
-                setActiveDragId(p.id);
+                setActiveResizeId(p.id);
+                setSelectedId(p.id);
               }}
-              className="flex items-center gap-1 cursor-grab active:cursor-grabbing font-bold text-indigo-200"
+              className={`absolute -bottom-3 -right-3 w-7 h-7 bg-indigo-600 hover:bg-indigo-700 border-2 border-white rounded-full cursor-se-resize flex items-center justify-center shadow-lg transition-all z-30 ${
+                isSelected ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'
+              }`}
+              title="Kéo góc để thu phóng kích thước đồ thị"
             >
-              <Move className="w-3 h-3" />
-              <span>{p.title || (p.type === 'function' ? `Đồ thị y = ${p.expression}` : 'Khối 3D')}</span>
-            </span>
-
-            <button
-              onClick={() => setPlots(prev => prev.filter(item => item.id !== p.id))}
-              className="text-rose-400 hover:text-rose-200 p-0.5"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+              <Maximize2 className="w-3.5 h-3.5 text-white" />
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
